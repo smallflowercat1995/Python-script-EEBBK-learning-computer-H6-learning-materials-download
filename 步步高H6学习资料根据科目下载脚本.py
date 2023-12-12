@@ -9,7 +9,6 @@ import re
 import time
 import sys
 import logging
-
 # 设置日志记录
 logging.basicConfig(filename='download.log', level=logging.INFO, format='%(asctime)s %(message)s')
 
@@ -31,6 +30,11 @@ def get_response(url):
 #解析网页的 HTML 结构，提取出所有科目的名称和链接
 def get_soup(html):
     return BeautifulSoup(html, "html.parser")
+
+#恢复下载文件，根据文件的字节位置
+def resume_download(fileurl, resume_byte_pos):
+    resume_header = {'Range': 'bytes=%d-' % resume_byte_pos}
+    return requests.get(fileurl, headers=resume_header, stream=True, verify=False, allow_redirects=True)
 
 #遍历每个科目
 def iterate_subjects(subjects, url):
@@ -68,40 +72,90 @@ def iterate_subjects(subjects, url):
                 filename = url.split("/")[-1]
                 #打印下载链接的地址和文件的名称
                 print(url, filename)
-                #发送 HTTP 请求，使用 stream 模式来下载文件
-                try:
-                    response = requests.get(url, stream=True,headers=headers)
-                except requests.exceptions.RequestException as e:
-                    logging.error(f'下载失败: {url}, {filename}')
-                    continue
                 file_path = os.path.join(name, filename)
-                #打开文件，保存到对应的文件夹中
-                try:
-                    with open(file_path, "wb") as f:
-                        #获取文件的总大小
-                        total_length = int(response.headers.get('content-length'))
-                        #初始化已下载的大小
-                        downloaded = 0
-                        #遍历每个数据块
-                        for chunk in response.iter_content(chunk_size=1024):
-                            #如果数据块不为空，写入文件
-                            if chunk:
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                #打印下载进度
-                                done = int(50 * downloaded / total_length)
-                                sys.stdout.write("\r%sMB/%sMB [%s%s] %d%%" % (downloaded/(1024*1024), total_length/(1024*1024), '#' * done, '.' * (50-done), done * 2))
-                                sys.stdout.flush()
-                        sys.stdout.write('\n')
-                except IOError as e:
-                    logging.error(f'文件操作错误: {e}')
-                    # 如果发生错误，删除文件
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
-                    continue
+                #判断文件是否已经存在
+                if os.path.exists(file_path):
+                    #获取文件的大小
+                    file_size = os.path.getsize(file_path)
+                    #发送 HTTP 请求，获取文件的总大小
+                    try:
+                        response = requests.head(url, headers=headers)
+                    except requests.exceptions.RequestException as e:
+                        logging.error(f'获取文件大小失败: {url}, {filename}')
+                        continue
+                    total_length = int(response.headers.get('content-length'))
+                    #判断文件大小是否与要下载的网络文件大小一致
+                    if file_size == total_length:
+                        #如果一致，则跳过
+                        logging.info(f'文件已存在，跳过下载: {url}, {filename}')
+                        continue
+                    else:
+                        #如果不一致，则断点续传
+                        logging.info(f'文件不完整，继续下载: {url}, {filename}')
+                        #发送 HTTP 请求，使用 stream 模式来下载文件
+                        try:
+                            response = resume_download(url, file_size)
+                        except requests.exceptions.RequestException as e:
+                            logging.error(f'下载失败: {url}, {filename}')
+                            continue
+                        #打开文件，追加到对应的文件夹中
+                        try:
+                            with open(file_path, "ab") as f:
+                                #初始化已下载的大小
+                                downloaded = file_size
+                                #遍历每个数据块
+                                for chunk in response.iter_content(chunk_size=1024):
+                                    #如果数据块不为空，写入文件
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded += len(chunk)
+                                        #打印下载进度
+                                        done = int(50 * downloaded / total_length)
+                                        sys.stdout.write("\r%sMB/%sMB [%s%s] %d%%" % (downloaded/(1024*1024), total_length/(1024*1024), '#' * done, '.' * (50-done), done * 2))
+                                        sys.stdout.flush()
+                                sys.stdout.write('\n')
+                        except IOError as e:
+                            logging.error(f'文件操作错误: {e}')
+                            # 如果发生错误，删除文件
+                            if os.path.exists(file_path):
+                                os.remove(file_path)
+                            continue
+                else:
+                    #如果文件不存在，则直接创建文件下载
+                    logging.info(f'文件不存在，开始下载: {url}, {filename}')
+                    #发送 HTTP 请求，使用 stream 模式来下载文件
+                    try:
+                        response = requests.get(url, stream=True,headers=headers)
+                    except requests.exceptions.RequestException as e:
+                        logging.error(f'下载失败: {url}, {filename}')
+                        continue
+                    #打开文件，保存到对应的文件夹中
+                    try:
+                        with open(file_path, "wb") as f:
+                            #获取文件的总大小
+                            total_length = int(response.headers.get('content-length'))
+                            #初始化已下载的大小
+                            downloaded = 0
+                            #遍历每个数据块
+                            for chunk in response.iter_content(chunk_size=1024):
+                                #如果数据块不为空，写入文件
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    #打印下载进度
+                                    done = int(50 * downloaded / total_length)
+                                    sys.stdout.write("\r%sMB/%sMB [%s%s] %d%%" % (downloaded/(1024*1024), total_length/(1024*1024), '#' * done, '.' * (50-done), done * 2))
+                                    sys.stdout.flush()
+                            sys.stdout.write('\n')
+                    except IOError as e:
+                        logging.error(f'文件操作错误: {e}')
+                        # 如果发生错误，删除文件
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        continue
 
-            #在请求之间添加延迟
-            time.sleep(1)
+                #在请求之间添加延迟
+                time.sleep(1)
 
 #启动
 if "__main__"==__name__:
