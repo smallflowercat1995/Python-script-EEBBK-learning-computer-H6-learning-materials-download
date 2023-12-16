@@ -31,6 +31,7 @@ Python脚本步步高学习电脑H6学习资料下载
     import time
     import sys
     import logging
+    
     # 设置日志记录
     logging.basicConfig(filename='download.log', level=logging.INFO, format='%(asctime)s %(message)s')
     
@@ -59,11 +60,16 @@ Python脚本步步高学习电脑H6学习资料下载
         return requests.get(fileurl, headers=resume_header, stream=True, verify=False, allow_redirects=True)
     
     #遍历每个科目
+    '''
+        [英语, 语文, 数学, 文数, 理数, 奥语, 奥数, 奥英, 物理, 化学, 生物, 政治, 历史, 地理, 文综, 理综, 科学, 常识, 艺术, 社会, 健康]
+    '''
     def iterate_subjects(subjects, url):
+        print(subjects)
         for subject in subjects:
             #获取科目的名称
             name = subject.text
-            #打印科目的名称
+            #打印科目的名称，可以手动指定学科
+            name = '数学'
             print(name)
             #创建科目对应的文件夹，如果文件夹已经存在，则跳过
             os.makedirs(name, exist_ok=True)
@@ -78,7 +84,7 @@ Python脚本步步高学习电脑H6学习资料下载
             print(1,"……",last_page)
             #遍历每一页
             for page in range(1, last_page + 1):
-                print(page)
+                item_count=0
                 #发送 HTTP 请求，获取网页的源代码
                 response = get_response(subject_url+"&page.p="+str(page))
                 html = response.text
@@ -87,14 +93,15 @@ Python脚本步步高学习电脑H6学习资料下载
                 downloads = soup.select('div.xz')
                 #遍历每个下载链接
                 for download in downloads:
+                    item_count+=1
                     #获取下载链接的地址
                     onclick = download.get('onclick')
                     url = re.search(r"'(.*?)'", onclick).group(1)
                     #获取文件的名称
                     filename = url.split("/")[-1]
-                    #打印下载链接的地址和文件的名称
-                    print(url, filename)
                     file_path = os.path.join(name, filename)
+                    #打印下载链接的地址和文件的名称
+                    print(page, item_count, url, file_path)
                     #判断文件是否已经存在
                     if os.path.exists(file_path):
                         #获取文件的大小
@@ -176,8 +183,8 @@ Python脚本步步高学习电脑H6学习资料下载
                                 os.remove(file_path)
                             continue
     
-                    #在请求之间添加延迟
-                    time.sleep(1)
+                #在请求之间添加延迟
+                time.sleep(1)
     
     #启动
     if "__main__"==__name__:
@@ -192,6 +199,7 @@ Python脚本步步高学习电脑H6学习资料下载
     2.断点续传
     3.文件大小判断
     4.文件是否存在判断
+    5.手动指定学科
 
 # 声明
 本项目仅作学习交流使用，用于查找资料，学习知识，不做任何违法行为。所有资源均来自互联网，仅供大家交流学习使用，出现违法问题概不负责。 
